@@ -5,16 +5,16 @@
  * @date 2022-03-12
  * 
  */
-#include "soem/ethercat.h"
-#include "soem/ethercattype.h"
-#include "soem/nicdrv.h"
-#include "soem/ethercatbase.h"
-#include "soem/ethercatmain.h"
-#include "soem/ethercatconfig.h"
-#include "soem/ethercatcoe.h"
-#include "soem/ethercatdc.h"
-#include "soem/ethercatprint.h"
-#include "kelo_tulip/include/kelo_tulip/KeloDriveAPI.h"
+#include "ethercat.h"
+#include "ethercattype.h"
+#include "nicdrv.h"
+#include "ethercatbase.h"
+#include "ethercatmain.h"
+#include "ethercatconfig.h"
+#include "ethercatcoe.h"
+#include "ethercatdc.h"
+#include "ethercatprint.h"
+#include "KeloDriveAPI.h"
 #include <stdio.h>
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_sf_trig.h>
@@ -22,10 +22,10 @@
 #include <gsl/gsl_blas.h>
 #include <gsl/gsl_multifit.h>
 #include <unistd.h>
-#include "PlatformToWheelInverseKinematicsSolver.c"
+#include "PlatformToWheelInverseKinematicsSolver.h"
 #include "KELORobotKinematics.h"
 #include <gsl/gsl_matrix_double.h>
-#include<string.h> 
+#include <string.h> 
 
 /**
  * @brief Establishing connection with ehtercat and performing data transfer with robot
@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
     ecx_context.manualstatechange = 0; // should be 0
 
     int nWheels = 4; 
-    int index_to_EtherCAT[4] = {2, 3, 5, 6};
+    int index_to_EtherCAT[4] = {5, 7, 9, 3};
     bool debug = false;
     char arg[] = "debug";
     if (strcmp(argv[1],arg) == 0)
@@ -90,7 +90,7 @@ int main(int argc, char *argv[])
      * @brief port name on our PC to initiate connection
      * 
      */
-    if (!ecx_init(&ecx_context, "enp2s0"))
+    if (!ecx_init(&ecx_context, "enp0s31f6"))
     { 
         printf("Failed to initialize EtherCAT\n");
         return 0;
@@ -230,7 +230,7 @@ int main(int argc, char *argv[])
      * 
      */
     gsl_matrix_set(b, 0, 0, 0.); // force is set in X-direction
-    gsl_matrix_set(b, 1, 0, -50.); // force is set in Y-direction
+    gsl_matrix_set(b, 1, 0, 50.); // force is set in Y-direction
     gsl_matrix_set(b, 2, 0, 0.); // moment is set in anti-clockwise direction
 
     /**

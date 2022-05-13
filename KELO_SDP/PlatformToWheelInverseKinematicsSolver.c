@@ -5,11 +5,12 @@
  * @date 2022-03-12
  *
  */
-#include "SmartWheelKinematics.c"
-#include "KELORobotKinematics.c"
+#include "SmartWheelKinematics.h"
+#include "KELORobotKinematics.h"
 #include <stdio.h>
 #include "PlatformToWheelInverseKinematicsSolver.h"
 #include <gsl/gsl_matrix_double.h>
+#include <gsl/gsl_blas.h>
 
 void print_matrix(const gsl_matrix *m)
 {
