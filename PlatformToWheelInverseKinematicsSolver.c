@@ -50,12 +50,25 @@ void functions_main(double *wheel_torques,
      *
      */
 
-    double radius = 0.052;               // 0.105
-    double castor_offset = 0.01;         // 0.01
-    double half_wheel_distance = 0.0275; // 0.0775
+    double radius = 0.052;            // (0.105/2) [m]
+    // double radius = 0.0575;               // 0.115 [m]
 
-    double wheel_coordinates[8] = {0.175, 0.1605, -0.175, 0.1605, -0.175, -0.1605, 0.175, -0.1605}; // x1,y1,x2,y2,..,y4
-    double pivot_angles_deviation[4] = {-2.5, -1.25, -2.14, 1.49};                                  // https://github.com/kelo-robotics/kelo_tulip/blob/master/config/example.yaml
+    double castor_offset = 0.01;         // 0.01 [m]
+    double half_wheel_distance = 0.0275; // (0.0775/2) [m]
+
+    // double wheel_coordinates[8] = {0.175, 0.1605, -0.175, 0.1605, -0.175, -0.1605, 0.175, -0.1605}; // x1,y1,x2,y2,..,y4
+    // double pivot_angles_deviation[4] = {-2.5, -1.25, -2.14, 1.49};                                  // https://github.com/kelo-robotics/kelo_tulip/blob/master/config/example.yaml
+
+    double wheel_coordinates[8] = { //[m]
+         0.233,  0.1165,            // fl-l, fl-r
+        -0.233,  0.1165,            // rl-l, rl-r
+        -0.233, -0.1165,            // rr-l, rr-r
+         0.233, -0.1165};           // fr-l, fr-r
+    double pivot_angles_deviation[4] = { // [rad]
+        3.449168,   //fl
+        2.942307,   //rl
+        0.637992,   //rr
+        2.127068};  //fr
 
     /**
      * @brief updating pivot angles
