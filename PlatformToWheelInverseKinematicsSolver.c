@@ -11,6 +11,7 @@
 #include "PlatformToWheelInverseKinematicsSolver.h"
 #include <gsl/gsl_matrix_double.h>
 #include <gsl/gsl_blas.h>
+#include <math.h>
 
 void print_matrix(const gsl_matrix *m)
 {
@@ -56,19 +57,41 @@ void functions_main(double *wheel_torques,
     double castor_offset = 0.01;         // 0.01 [m]
     double half_wheel_distance = 0.0275; // (0.0775/2) [m]
 
-    // double wheel_coordinates[8] = {0.175, 0.1605, -0.175, 0.1605, -0.175, -0.1605, 0.175, -0.1605}; // x1,y1,x2,y2,..,y4
-    // double pivot_angles_deviation[4] = {-2.5, -1.25, -2.14, 1.49};                                  // https://github.com/kelo-robotics/kelo_tulip/blob/master/config/example.yaml
+    // Guido parameters 
+    // double wheel_coordinates[8] = {
+        //  0.175, 0.1605,
+        // -0.175, 0.1605,
+        // -0.175, -0.1605,
+        //  0.175, -0.1605}; // x1,y1,x2,y2,..,y4
+    // double pivot_angles_deviation[4] = {
+        //  2.5,
+        // -1.25,
+        // -2.14,
+        //  1.49}; // https://github.com/kelo-robotics/kelo_tulip/blob/master/config/example.yaml
 
+    // KELO Robile parameters 4-active-WD
+    // double wheel_coordinates[8] = { //[m]
+    //      0.233,  0.1165,            // fl-l, fl-r
+    //     -0.233,  0.1165,            // rl-l, rl-r
+    //     -0.233, -0.1165,            // rr-l, rr-r
+    //      0.233, -0.1165};           // fr-l, fr-r
+    // double pivot_angles_deviation[4] = { // [rad]
+    //     3.449168,   //fl
+    //     2.942307,   //rl
+    //     0.637992,   //rr
+    //     2.127068};  //fr
+
+    // Freddy 4-active-WD
     double wheel_coordinates[8] = { //[m]
-         0.233,  0.1165,            // fl-l, fl-r
-        -0.233,  0.1165,            // rl-l, rl-r
-        -0.233, -0.1165,            // rr-l, rr-r
-         0.233, -0.1165};           // fr-l, fr-r
+         0.188,  0.2075,            // fl-l, fl-r
+        -0.188,  0.2075,         // rl-l, rl-r
+        -0.188, -0.2075,           // rr-l, rr-r
+         0.188, -0.2075};           // fr-l, fr-r
     double pivot_angles_deviation[4] = { // [rad]
-        3.449168,   //fl
-        2.942307,   //rl
-        0.637992,   //rr
-        2.127068};  //fr
+         2.19,   //fl
+         1.61,   //rl
+         1.72,   //rr
+         1.90};  //fr
 
     /**
      * @brief updating pivot angles
@@ -140,8 +163,13 @@ void functions_main(double *wheel_torques,
             printf("%f\t", pivot_forces[i]);
         }
 
-        printf("\nWheel torques:\n");
+        // printf("\nPivot force magnitudes:\n");
+        // for (int i = 0; i < 8; i += 2)
+        // {
+        //     printf("%f\t", sqrt(pivot_forces[i] * pivot_forces[i] + pivot_forces[i + 1] * pivot_forces[i + 1]));
+        // }
 
+        printf("\nWheel torques:\n");
         for (int i = 0; i < 8; i++)
         {
             printf("%f\t", wheel_torques[i]);
