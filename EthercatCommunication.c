@@ -24,8 +24,11 @@
 #include <unistd.h>
 #include "PlatformToWheelInverseKinematicsSolver.h"
 #include "KELORobotKinematics.h"
+#include "abag.h"
 #include <gsl/gsl_matrix_double.h>
 #include <string.h> 
+
+#define SIM_CONTROL 0
 
 /**
  * @brief Establishing connection with ehtercat and performing data transfer with robot
@@ -36,6 +39,27 @@
  */
 int main(int argc, char *argv[])
 {
+    int NUM_DRIVES = 4; 
+    int index_to_EtherCAT[4] = {2, 6, 10, 11};
+    bool debug = false;
+    // char arg[] = "debug";
+    // if (strcmp(argv[1],arg) == 0)
+    // {
+    //     debug = true;
+    // }
+
+#if SIM_CONTROL == 0
+
+    rxpdo1_t msg;
+    msg.timestamp = 1;
+    msg.command1 = 0;
+    msg.limit1_p = 0;
+    msg.limit1_n = 0;
+    msg.limit2_p = 0;
+    msg.limit2_n = 0;
+    msg.setpoint1 = 0;
+    msg.setpoint2 = 0;
+
     ec_slavet ecx_slave[EC_MAXSLAVE];
     int ecx_slavecount;
     ec_groupt ec_group[EC_MAXGROUP];
@@ -77,15 +101,6 @@ int main(int argc, char *argv[])
     ecx_context.eepFMMU = &ec_FMMU;
     ecx_context.manualstatechange = 0; // should be 0
 
-    int nWheels = 4; 
-    int index_to_EtherCAT[4] = {5, 7, 9, 3};
-    bool debug = false;
-    char arg[] = "debug";
-    if (strcmp(argv[1],arg) == 0)
-    {
-        debug = true;
-    }
-    
     /**
      * @brief port name on our PC to initiate connection
      * 
@@ -144,17 +159,7 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    rxpdo1_t msg;
-    msg.timestamp = 1;
-    msg.command1 = 0;
-    msg.limit1_p = 0;
-    msg.limit1_n = 0;
-    msg.limit2_p = 0;
-    msg.limit2_n = 0;
-    msg.setpoint1 = 0;
-    msg.setpoint2 = 0;
-
-    for (unsigned int i = 0; i < nWheels; i++)
+    for (unsigned int i = 0; i < NUM_DRIVES; i++)
     {
         rxpdo1_t *ecData = (rxpdo1_t *)ecx_slave[index_to_EtherCAT[i]].outputs;
         *ecData = msg;
@@ -196,15 +201,16 @@ int main(int argc, char *argv[])
     {
         printf("Operational state reached for all EtherCAT slaves.\n");
     }
+#endif
 
     /**
      * @brief initialising pointers to variables used for solving the problem of inverse kinematics
      * 
      */
-    int cnt = 0;
     const unsigned int N = 3;
     const unsigned int M = 8;
-    double motor_const = 3.5714; //units: (Ampere/Newton-meter)
+    double motor_const = 0.29; //units: (Newton-meter/Ampere)
+    double max_current = 10.0; // units Ampere
     gsl_matrix *A = gsl_matrix_alloc(N, M);
     gsl_matrix *A_inv_T = gsl_matrix_alloc(M, N);
     gsl_matrix *A_tmp = gsl_matrix_alloc(N, M);
@@ -218,33 +224,50 @@ int main(int argc, char *argv[])
     gsl_matrix *b = gsl_matrix_alloc(N, 1);
     gsl_matrix *b_verify = gsl_matrix_alloc(N, 1);
 
+    // ABAG parameters
+    const double alpha_parameter[4]          = { 0.900000, 0.900000, 0.950000, 0.950000 };
+    const double bias_threshold_parameter[4] = { 0.000407, 0.000407, 0.000407, 0.000407 };
+    const double bias_step_parameter[4]      = { 0.000400, 0.000400, 0.000400, 0.000400 };
+    const double gain_threshold_parameter[4] = { 0.550000, 0.550000, 0.550000, 0.550000 };
+    const double gain_step_parameter[4]      = { 0.003000, 0.003000, 0.003000, 0.003000 };
+    double desired_state[4] = { 0.0, 0.0, 0.0, 0.0 };
+    double ctrl_error[4]    = { 0.0, 0.0, 0.0, 0.0 };
+    double abag_command[4]  = { 0.0, 0.0, 0.0, 0.0 };
+    abagState_t abag_state[4];
+    for (int i = 0; i < 4; i++)
+    {
+        initialize_abagState(&abag_state[i]);
+    }
+
     /**
      * @brief initialising arrays to store pivot angles and wheel torques
      * 
      */
-    double pivot_angles[4];
-    double wheel_torques[8];
+    double pivot_angles[4]  = {0.0, 0.0, 0.0, 0.0};
+    double wheel_torques[8] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
     /**
      * @brief setting input platform force values
      * 
      */
-    gsl_matrix_set(b, 0, 0, 0.); // force is set in X-direction
-    gsl_matrix_set(b, 1, 0, 50.); // force is set in Y-direction
-    gsl_matrix_set(b, 2, 0, 0.); // moment is set in anti-clockwise direction
+    gsl_matrix_set(b, 0, 0, 90.0); // force is set in X-direction
+    gsl_matrix_set(b, 1, 0, 0.0); // force is set in Y-direction
+    gsl_matrix_set(b, 2, 0, 0.0); // moment is set in anti-clockwise direction
 
+#if SIM_CONTROL == 0
     /**
      * @brief reading data from individual wheels
      * 
      */
-    for (unsigned int i = 0; i < nWheels; i++)
+    for (unsigned int i = 0; i < NUM_DRIVES; i++)
     {
         txpdo1_t *ecData = (txpdo1_t *)ecx_slave[index_to_EtherCAT[i]].inputs;
         pivot_angles[i] = ecData->encoder_pivot;
     }
+#endif
 
     /**
-     * @brief setting the weght matrix
+     * @brief setting the weight matrix
      * 
      */
     size_t i;
@@ -262,13 +285,14 @@ int main(int argc, char *argv[])
      * @brief setting number of iterations until which the force has to be applied
      * 
      */
-    while (cnt < 500)
+    int loop_count = 0;
+    while (loop_count < 5000000)
     {
         /**
          * @brief setting sleep time between iterations to achieve communication frequency of 1000Hz
          * 
          */
-        usleep(10000);
+        usleep(1000);
 
         /**
          * @brief finding wheel torques for each iteration parameterised by pivot angles 
@@ -291,14 +315,73 @@ int main(int argc, char *argv[])
                        M,
                        N,
                        debug);
-        cnt += 1;
+
+        for (int i = 0; i < NUM_DRIVES; i++)
+        {
+            if (pivot_angles[i] > M_PI) pivot_angles[i] -= 2 * M_PI;
+
+            ctrl_error[i] = desired_state[i] - pivot_angles[i];
+            if (fabs(ctrl_error[i]) < 0.15) ctrl_error[i] = 0.0;
+        }
+        // printf("Pivot angles: %f, %f, %f, %f\n", pivot_angles[0], pivot_angles[1], pivot_angles[2], pivot_angles[3]);
+        // printf("Error: %f, %f, %f, %f\n", ctrl_error[0], ctrl_error[1], ctrl_error[2], ctrl_error[3]);
+
+        // abag_sched(&abag_state[0], &ctrl_error[0],
+        //            &abag_command[0], &alpha_parameter[0],
+        //            &bias_threshold_parameter[0], &bias_step_parameter[0],
+        //            &gain_threshold_parameter[0], &gain_step_parameter[0]);
+        // printf("error: %f, bias: %f, gain: %f, cmd: %f\n\n", abag_state[0].eBar_access, 
+        //        abag_state[0].bias_access, abag_state[0].gain_access, abag_command[0]);
+        // wheel_torques[0] = abag_command[0] * max_current * motor_const;
+        // wheel_torques[1] = -abag_command[0] * max_current * motor_const;
+        // wheel_torques[0] = 0.0;
+        // wheel_torques[1] = 0.0;
+
+        // abag_sched(&abag_state[1], &ctrl_error[1],
+        //            &abag_command[1], &alpha_parameter[1],
+        //            &bias_threshold_parameter[1], &bias_step_parameter[1],
+        //            &gain_threshold_parameter[1], &gain_step_parameter[1]);
+        // printf("error: %f, bias: %f, gain: %f, cmd: %f\n\n", abag_state[0].eBar_access, 
+        //        abag_state[0].bias_access, abag_state[0].gain_access, abag_command[0]);
+        // wheel_torques[2] = abag_command[1] * max_current * motor_const;
+        // wheel_torques[3] = -abag_command[1] * max_current * motor_const;
+        // wheel_torques[2] = 0.0;
+        // wheel_torques[3] = 0.0;
+
+        // abag_sched(&abag_state[2], &ctrl_error[2],
+        //            &abag_command[2], &alpha_parameter[2],
+        //            &bias_threshold_parameter[2], &bias_step_parameter[2],
+        //            &gain_threshold_parameter[2], &gain_step_parameter[2]);
+        // printf("error: %f, bias: %f, gain: %f, cmd: %f\n\n", abag_state[0].eBar_access, 
+        //        abag_state[0].bias_access, abag_state[0].gain_access, abag_command[0]);
+        // wheel_torques[4] = abag_command[2] * max_current * motor_const;
+        // wheel_torques[5] = -abag_command[2] * max_current * motor_const;
+        // wheel_torques[4] = 0.0;
+        // wheel_torques[5] = 0.0;
+
+        // abag_sched(&abag_state[3], &ctrl_error[3],
+        //            &abag_command[3], &alpha_parameter[3],
+        //            &bias_threshold_parameter[3], &bias_step_parameter[3],
+        //            &gain_threshold_parameter[3], &gain_step_parameter[3]);
+        // printf("error: %f, bias: %f, gain: %f, cmd: %f\n\n", abag_state[0].eBar_access, 
+        //        abag_state[0].bias_access, abag_state[0].gain_access, abag_command[0]);
+        // wheel_torques[6] = abag_command[3] * max_current * motor_const;
+        // wheel_torques[7] = -abag_command[3] * max_current * motor_const;
+        // wheel_torques[6] = 0.0;
+        // wheel_torques[7] = 0.0;
+
+        printf("Torque: %f, %f, %f, %f, %f, %f, %f, %f\n\n", wheel_torques[0], wheel_torques[1],
+                                                             wheel_torques[2], wheel_torques[3],
+                                                             wheel_torques[4], wheel_torques[5],
+                                                             wheel_torques[6], wheel_torques[7]);
+
         rxpdo1_t msg;
         msg.timestamp = time(NULL);
         msg.command1 = COM1_ENABLE1 | COM1_ENABLE2 | COM1_MODE_TORQUE;
-        msg.limit1_p = 3;  // upper limit for first wheel
-        msg.limit1_n = -3; // lower limit for first wheel
-        msg.limit2_p = 3;  // upper limit for second wheel
-        msg.limit2_n = -3; // lower limit for second wheel
+        msg.limit1_p = 0.0;  // Wheel's microcontroller does not seem to use those limits in torque control mode
+        msg.limit1_n = 0.0;
+        msg.limit2_p = 0.0;
+        msg.limit2_n = 0.0;
 
         /**
          * @brief setting calculated torque values to individual wheels
@@ -308,24 +391,25 @@ int main(int argc, char *argv[])
         {
             printf("\nsetpoint values:\n");
         }
-        for (unsigned int i = 0; i < nWheels; i++) // runs all wheels
+        for (unsigned int i = 0; i < NUM_DRIVES; i++) // runs all wheels
         {
-            msg.setpoint1 = -motor_const * wheel_torques[2 * i]; // units: (rad/sec)
-            msg.setpoint2 = motor_const * wheel_torques[2 * i + 1];
+            msg.setpoint1 = + wheel_torques[2 * i]     / motor_const; // units: (rad/sec)
+            msg.setpoint2 = - wheel_torques[2 * i + 1] / motor_const;
+
+            // msg.setpoint1 = 0.0;
+            // msg.setpoint2 = 0.0;
+#if SIM_CONTROL == 0
             rxpdo1_t *ecData = (rxpdo1_t *)ecx_slave[index_to_EtherCAT[i]].outputs;
             *ecData = msg;
-
-            /**
-             * @brief printing angles after offsetting the pivots
-             * 
-             */
+#endif
             if (debug)
             {
-                printf("%f\t", -motor_const * wheel_torques[2 * i]);
-                printf("%f\t", motor_const * wheel_torques[2 * i + 1]);
+                printf("%f\t", msg.setpoint1);
+                printf("%f\t", msg.setpoint2);
             }
-        }
+        } // End of the for loop
 
+#if SIM_CONTROL == 0
         /**
          * @brief Construct a new ecx send processdata object
          * 
@@ -337,17 +421,27 @@ int main(int argc, char *argv[])
          * 
          */
         ecx_receive_processdata(&ecx_context, EC_TIMEOUTRET);
-
         /**
          * @brief receiving updated pivot angles
          * 
          */
-        for (unsigned int i = 0; i < nWheels; i++)
+        for (unsigned int i = 0; i < NUM_DRIVES; i++)
         {
             txpdo1_t *ecData = (txpdo1_t *)ecx_slave[index_to_EtherCAT[i]].inputs;
             pivot_angles[i] = ecData->encoder_pivot;
         }
-    }
+#else
+        // pivot_angles[0] = 0.0;
+        // pivot_angles[1] = 1.0;
+        // pivot_angles[2] = -0.5;
+        // pivot_angles[3] = 0.3;
+        // pivot_angles[0] = 0.0;
+        // pivot_angles[1] = 0.0;
+        // pivot_angles[2] = 0.0;
+        // pivot_angles[3] = 0.0;
+#endif
+        loop_count += 1;
+    } // End of the while loop
 
     /**
      * @brief releasing memory from all initialised pointers

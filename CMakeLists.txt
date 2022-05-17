@@ -8,6 +8,7 @@ add_executable(kelo_control
   PlatformToWheelInverseKinematicsSolver.c
   SmartWheelKinematics.c
   KELORobotKinematics.c
+  abag.c
 )
 
 target_link_libraries(kelo_control
